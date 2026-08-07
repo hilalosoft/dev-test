@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Bookmark, Paginated, Tag } from '~/composables/useApi'
 
+const showArchived = ref(false)
 const api = useApi()
 
 const search = ref('')
@@ -26,6 +27,7 @@ async function loadBookmarks() {
       query: {
         search: search.value || undefined,
         tag: activeTag.value || undefined,
+        archived: showArchived.value ? 1: undefined,
         page: page.value,
       },
     })
@@ -77,6 +79,30 @@ onMounted(() => {
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+async function toggleArchive(bookmark: Bookmark) {
+  const action = bookmark.archived_at ? 'unarchive' : 'archive'
+
+  try {
+    const response = await api<{ data: Bookmark }>(
+      `/bookmarks/${bookmark.id}/${action}`,
+      {
+        method: 'PATCH',
+      }
+    )
+
+    Object.assign(bookmark, response.data)
+  }
+  catch (e: unknown) {
+    error.value = e instanceof Error
+      ? e.message
+      : `Could not ${action} bookmark`
+  }
+}
+
+function onArchivedFilterChange() {
+  page.value = 1
+  loadBookmarks()
+}
 </script>
 
 <template>
@@ -106,7 +132,16 @@ const formatDate = (iso: string) =>
           class="search"
           placeholder="Search titles and URLs…"
         >
+        <label class="archived-filter">
+      <input
+        v-model="showArchived"
+        type="checkbox"
+        @change="onArchivedFilterChange"
+      >
+      Show archived only
+    </label>
       </div>
+
 
       <p class="status">
         <span v-if="loading">Loading…</span>
@@ -139,6 +174,23 @@ const formatDate = (iso: string) =>
               {{ tag.name }}
             </li>
           </ul>
+
+          <button
+            v-if="bookmark.archived_at"
+            type="button"
+            @click="toggleArchive(bookmark)"
+          >
+            Unarchive
+          </button>
+
+          <button
+            v-else
+            type="button"
+            @click="toggleArchive(bookmark)"
+          >
+            Archive
+          </button>
+
         </li>
       </ul>
 

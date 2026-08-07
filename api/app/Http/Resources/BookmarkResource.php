@@ -19,6 +19,7 @@ class BookmarkResource extends JsonResource
             'domain' => $this->domain,
             'description' => $this->description,
             'is_pinned' => (bool) $this->is_pinned,
+            'archived_at'=> $this->archived_at,
             'created_at' => $this->created_at?->toIso8601String(),
             'tags' => TagResource::collection($this->whenLoaded('tags')),
         ];

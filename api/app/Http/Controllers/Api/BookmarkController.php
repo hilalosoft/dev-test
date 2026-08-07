@@ -22,41 +22,49 @@ class BookmarkController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $bookmarks = Bookmark::query()->with('tags')->get();
-
-        if ($request->filled('search')) {
-            $needle = mb_strtolower((string) $request->input('search'));
-
-            $bookmarks = $bookmarks->filter(function (Bookmark $bookmark) use ($needle) {
-                return str_contains(mb_strtolower($bookmark->title), $needle)
-                    || str_contains(mb_strtolower($bookmark->url), $needle);
-            });
-        }
-
-        if ($request->filled('tag')) {
-            $slug = (string) $request->input('tag');
-
-            $bookmarks = $bookmarks->filter(
-                fn (Bookmark $bookmark) => $bookmark->tags->contains('slug', $slug)
-            );
-        }
-
-        $total = $bookmarks->count();
-        $page = max(1, (int) $request->input('page', 1));
-
-        $items = $bookmarks
-            ->forPage($page, self::PER_PAGE)
-            ->sortByDesc('created_at')
-            ->values();
+        $bookmarks = Bookmark::query()
+            ->with('tags')
+            ->when($request->boolean('archived'), 
+                fn ($q) => $q->whereNotNull('archived_at'),
+                fn ($q) => $q->whereNull('archived_at')
+            )
+            ->when($request->input('search'), fn ($q, $term) => $q->where(
+                fn ($q) => $q->where('title', 'like', "%{$term}%")
+                    ->orWhere('url', 'like', "%{$term}%")
+            ))
+            ->when($request->input('tag'), fn ($q, $tag) => $q->whereHas(
+                'tags',
+                fn ($q) => $q->where('tags.slug', $tag)
+            ))
+            ->orderByDesc('is_pinned')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate(self::PER_PAGE);
+            // ->simplePaginate(self::PER_PAGE);
 
         return response()->json([
-            'data' => BookmarkResource::collection($items),
-            'meta' => [
-                'current_page' => $page,
-                'per_page' => self::PER_PAGE,
-                'total' => $total,
-                'last_page' => max(1, (int) ceil($total / self::PER_PAGE)),
-            ],
+        'data' => BookmarkResource::collection($bookmarks->items()),
+        'meta' => [
+            'current_page' => $bookmarks->currentPage(),
+            'per_page' => $bookmarks->perPage(),
+            'total' => $bookmarks->total(),
+            'last_page' => $bookmarks->lastPage(),
+        ],
         ]);
+
+        // return response()->json([
+        //     'data' => BookmarkResource::collection($bookmarks->items()),
+        //     'meta' => [
+        //         'current_page' => $bookmarks->currentPage(),
+        //         'per_page' => $bookmarks->perPage(),
+        //         'has_more_pages' => $bookmarks->hasMorePages(),
+        //     ],
+        // ]);
+    }
+    public function archive(Bookmark $bookmark){
+        $bookmark->archive();
+    }
+    public function unarchive(Bookmark $bookmark){
+        $bookmark->unarchive();
     }
 }
